@@ -10,7 +10,14 @@
 
 ## glob
 
-Search for files matching [glob patterns](https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet) with support for returning matching deleted git tracked files
+Search for files matching [glob patterns](https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet) with support for returning matching deleted git tracked files and also excludes all files and folders specified in `.gitignore` and the `.git` directory.
+
+## Usage
+
+> NOTE: :warning:
+>
+> *   Ensure that subdirectory patterns are prefixed with `**/` as `**.yml` only matches yml files in the top level directory and should be replaced with `**/*.yml`.
+> *   All multi line string patterns are specified without quotes. See: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#filter-pattern-cheat-sheet
 
 ```yaml
 ...
@@ -18,13 +25,12 @@ Search for files matching [glob patterns](https://docs.github.com/en/actions/lea
       - uses: actions/checkout@v2
 
       - name: Glob match
-        uses: tj-actions/glob@v9.2
+        uses: tj-actions/glob@v16
         id: glob
         with:
           files: |
             *.md
-            **.yaml
-            **.yml
+            **/*.yaml
             !action.yml
             **/rebase.yml
 
@@ -38,24 +44,29 @@ Search for files matching [glob patterns](https://docs.github.com/en/actions/lea
 
 <!-- AUTO-DOC-INPUT:START - Do not remove or modify this section -->
 
-|                   INPUT                   |  TYPE  | REQUIRED |        DEFAULT        |                                                   DESCRIPTION                                                    |
-|-------------------------------------------|--------|----------|-----------------------|------------------------------------------------------------------------------------------------------------------|
-| base-sha                                  | string | false    |                       | Specify a base commit SHA<br>used for comparing changes, when<br>`include-deleted-files` is set to `true`<br>    |
-| escape-paths                              | string | false    | `"false"`             | Escape special characters of filenames<br>used in the `paths` output<br>                                         |
-| excluded-files                            | string | false    |                       | Excluded file patterns (optionally include<br>`!` before the file pattern<br>or it would be prepended)<br>       |
-| excluded-files-from-source-file           | string | false    |                       | Source file to populate the<br>`excluded-files` input                                                            |
-| excluded-files-from-source-file-separator | string | false    | `"\n"`                | Separator used to split the<br>`excluded-files-from-source-file` input                                           |
-| excluded-files-separator                  | string | false    | `"\n"`                | Separator used to split the<br>`excluded-files` input                                                            |
-| files                                     | string | false    |                       | File patterns                                                                                                    |
-| files-from-source-file                    | string | false    |                       | Source file to populate the<br>`files` input                                                                     |
-| files-from-source-file-separator          | string | false    | `"\n"`                | Separator used to split the<br>`files-from-source-file` input                                                    |
-| files-separator                           | string | false    | `"\n"`                | Separator used to split the<br>`files` input                                                                     |
-| follow-symbolic-links                     | string | true     | `"true"`              | Indicates whether to follow symbolic<br>links                                                                    |
-| include-deleted-files                     | string | false    | `"false"`             | Include all matching deleted files<br>                                                                           |
-| separator                                 | string | true     | `" "`                 | Separator used for the paths<br>output.                                                                          |
-| sha                                       | string | true     | `"${{ github.sha }}"` | Specify a current commit SHA<br>used for comparing changes, when<br>`include-deleted-files` is set to `true`<br> |
-| strip-top-level-dir                       | string | false    | `"true"`              | Strip the `$GITHUB_WORKSPACE` from the<br>`paths` output                                                         |
-| working-directory                         | string | true     | `"."`                 | Specify a relative path under<br>$GITHUB\_WORKSPACE to locate the repository<br>                                  |
+|                   INPUT                   |  TYPE  | REQUIRED |                       DEFAULT                       |                                                              DESCRIPTION                                                              |
+|-------------------------------------------|--------|----------|-----------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
+|                 base-ref                  | string |  false   |    `"${{ github.event.pull_request.base.ref }}"`    |                  Specify a base ref used for<br> comparing changes, when `include-deleted-files` is set<br>to `true`                  |
+|                 base-sha                  | string |  false   |                                                     |              Specify a base commit SHA used<br> for comparing changes, when `include-deleted-files` is<br>set to `true`               |
+|                   diff                    | string |  false   |                                                     |         Specify a diff string `..` or<br> `...` used for comparing changes, when<br>`include-deleted-files` is set to `true`          |
+|               escape-paths                | string |  false   |                      `"false"`                      |                                 Escape special characters of filenames used<br>in the `paths` output                                  |
+|              excluded-files               | string |  false   |                                                     |                Excluded file patterns (optionally include `!`<br> before the file pattern or it<br>would be prepended)                |
+|      excluded-files-from-source-file      | string |  false   |                                                     |                                         Source file to populate the `excluded-files`<br>input                                         |
+| excluded-files-from-source-file-separator | string |  false   |                       `"\n"`                        |                                Separator used to split the `excluded-files-from-source-file`<br>input                                 |
+|         excluded-files-separator          | string |  false   |                       `"\n"`                        |                                         Separator used to split the `excluded-files`<br>input                                         |
+|                   files                   | string |  false   |                                                     |                                                             File patterns                                                             |
+|          files-from-source-file           | string |  false   |                                                     |                                             Source file to populate the `files`<br>input                                              |
+|     files-from-source-file-separator      | string |  false   |                       `"\n"`                        |                                     Separator used to split the `files-from-source-file`<br>input                                     |
+|              files-separator              | string |  false   |                       `"\n"`                        |                                             Separator used to split the `files`<br>input                                              |
+|           follow-symbolic-links           | string |   true   |                      `"true"`                       |                                              Indicates whether to follow symbolic links                                               |
+|              head-repo-fork               | string |  false   | `"${{ github.event.pull_request.head.repo.fork }}"` | Specify a boolean indicating a PR<br> from a fork is used for<br> comparing changes, when `include-deleted-files` is set<br>to `true` |
+|           include-deleted-files           | string |  false   |                      `"false"`                      |                                                  Include all matching deleted files                                                   |
+|             match-directories             | string |   true   |                      `"true"`                       |                                            Indicates whether to include match directories                                             |
+|           match-gitignore-files           | string |   true   |                      `"false"`                      |                                          Indicates whether to match files in<br>`.gitignore`                                          |
+|                 separator                 | string |   true   |                        `" "`                        |                                                 Separator used for the paths output.                                                  |
+|                    sha                    | string |   true   |                `"${{ github.sha }}"`                |             Specify a current commit SHA used<br> for comparing changes, when `include-deleted-files` is<br>set to `true`             |
+|            strip-top-level-dir            | string |  false   |                      `"true"`                       |                                       Strip the `$GITHUB_WORKSPACE` from the `paths`<br>output                                        |
+|             working-directory             | string |   true   |                        `"."`                        |                              Specify a relative path under $GITHUB\_WORKSPACE<br>to locate the repository                              |
 
 <!-- AUTO-DOC-INPUT:END -->
 
@@ -63,12 +74,51 @@ Search for files matching [glob patterns](https://docs.github.com/en/actions/lea
 
 <!-- AUTO-DOC-OUTPUT:START - Do not remove or modify this section -->
 
-|      OUTPUT       |  TYPE  |                                         DESCRIPTION                                          |
-|-------------------|--------|----------------------------------------------------------------------------------------------|
-| paths             | string | List of filtered paths using<br>the specified patterns and separator<br>                     |
-| paths-output-file | string | List of filtered paths using<br>the specified patterns and separator<br>stored in a tempfile |
+|       OUTPUT        |  TYPE  |                                             DESCRIPTION                                             |
+|---------------------|--------|-----------------------------------------------------------------------------------------------------|
+| has-custom-patterns | string |                             Indicates whether custom patterns were used                             |
+|        paths        | string |                List of filtered paths using the<br>specified patterns and separator                 |
+|  paths-output-file  | string | List of filtered paths using the<br> specified patterns and separator stored in<br>a temporary file |
 
 <!-- AUTO-DOC-OUTPUT:END -->
+
+## Patterns
+
+### Glob behavior
+
+Patterns `*`, `?`, `[...]`, `**` (globstar) are supported.
+
+With the following behaviors:
+
+*   File names that begin with `.` may be included in the results
+*   Case insensitive on Windows
+*   Directory separator `/` and `\` both supported on Windows
+
+### Tilde expansion
+
+Supports basic tilde expansion, for current user HOME replacement only.
+
+Example:
+
+*   `~` may expand to /Users/johndoe
+*   `~/foo` may expand to /Users/johndoe/foo
+
+### Comments
+
+Patterns that begin with `#` are treated as comments.
+
+### Exclude patterns
+
+Leading `!` changes the meaning of an include pattern to exclude.
+
+Multiple leading `!` flips the meaning.
+
+### Escaping
+
+Wrapping special characters in `[]` can be used to escape literal glob characters
+in a file name. For example the literal file name `hello[a-z]` can be escaped as `hello[[]a-z]`.
+
+On Linux/macOS `\` is also treated as an escape character.
 
 *   Free software: [MIT license](LICENSE)
 
@@ -82,8 +132,7 @@ If you feel generous and want to show some extra appreciation:
 
 ## Credits
 
-This package was created
-with [Cookiecutter](https://github.com/cookiecutter/cookiecutter)
+This package was created with [Cookiecutter](https://github.com/cookiecutter/cookiecutter)
 using [cookiecutter-action](https://github.com/tj-actions/cookiecutter-action)
 
 *   [@actions/glob](https://github.com/actions/toolkit/tree/main/packages/glob)

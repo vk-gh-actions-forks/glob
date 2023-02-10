@@ -1,5 +1,5 @@
 import * as path from 'path'
-import {getFilesFromSourceFile} from '../src/utils'
+import {getFilesFromSourceFile} from '../utils'
 
 describe('getFilesFromSourceFile test', () => {
   const filePaths = new Array(2)
@@ -17,10 +17,10 @@ describe('getFilesFromSourceFile test', () => {
 
   it('generator returns all excluded fileNames', async () => {
     const expectedFilePaths = [
-      '!**/*.md',
-      '!**/**.yaml',
-      '!**/**/greetings.yml',
-      '!**/**.yml'
+      '!*.md',
+      '!**.yaml',
+      '!**/greetings.yml',
+      '!**.yml'
     ]
 
     const fileNames = await getFilesFromSourceFile({
