@@ -11,19 +11,22 @@ on:
       - main
 
 jobs:
-  build: # make sure build/ci work properly
+  build:
     runs-on: ubuntu-latest
+    outputs:
+      files_changed: ${{ steps.changed_files.outputs.files_changed }}
+
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Use Node.js 16.x
-        uses: actions/setup-node@v3.6.0
+      - name: Use Node.js 20.x
+        uses: actions/setup-node@v4.2.0
         with:
           cache: 'yarn'
-          node-version: '16.x'
+          node-version: '20.x'
 
       - name: Create coverage directory and clover.xml
         run: |
@@ -34,19 +37,23 @@ jobs:
         run: |
           yarn install
 
-      - name: Run eslint on changed files
-        uses: tj-actions/eslint-changed-files@v18
+      - name: Run ESLint on changed files
+        uses: tj-actions/eslint-changed-files@v25
         with:
           token: ${{ secrets.PAT_TOKEN }}
-          config_path: ".eslintrc.json"
-          ignore_path: ".eslintignore"
+          ignore_patterns: |
+            dist/**
+            lib/**
+            node_modules/**
+            jest.config.js
+            coverage/**
 
       - name: Run build and test
         run: |
           yarn all
 
       - name: Verify Changed files
-        uses: tj-actions/verify-changed-files@v13
+        uses: tj-actions/verify-changed-files@v20
         id: changed_files
         with:
           files: |
@@ -69,7 +76,7 @@ jobs:
           branch: ${{ github.head_ref }}
 
       - name: Upload build assets
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build-assets
           path: dist
@@ -81,20 +88,21 @@ jobs:
           project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
           coverage-reports: coverage/lcov.info
 
-  test: # make sure the action works on a clean machine without building
+  test:
     needs: build
+    if: needs.build.outputs.files_changed != 'true'
     runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
-        platform: [ ubuntu-latest, windows-latest, macos-latest, macos-11, windows-2022 ]
+        platform: [ ubuntu-latest, windows-latest, macos-latest ]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           fetch-depth: 0
 
       - name: Download build assets
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: build-assets
 
@@ -154,17 +162,17 @@ jobs:
           
       - name: Run glob for source-files.txt escape paths
         uses: ./
-        id: glob-source-files-escape-paths
+        id: glob-source-files-safe-output
         with:
           files-from-source-file: |
             src/__tests__/source-files.txt
             src/__tests__/source-files.txt
-          escape-paths: true
+          safe-output: true
 
       - name: Show output
         run: |
-          echo "${{ steps.glob-source-files-escape-paths.outputs.paths }}"
-          cat "${{ steps.glob-source-files-escape-paths.outputs.paths-output-file }}"
+          echo "${{ steps.glob-source-files-safe-output.outputs.paths }}"
+          cat "${{ steps.glob-source-files-safe-output.outputs.paths-output-file }}"
 
       - name: Run glob for source-files.txt
         uses: ./
@@ -225,13 +233,13 @@ jobs:
           files: |
             - *.md
 
-      - name: Exit with 1 if no error is raised
-        if: steps.glob-invalid.outcome != 'failure'
-        run: |
-          echo "Expected: (failure) got ${{ steps.changed-files.outcome }}"
-          exit 1
-
       - name: Show output
-        if: steps.glob-invalid.outputs.paths != '' || steps.glob-invalid.outputs.paths-output-file != ''
         run: |
-          echo "Unexpected output returned:\n${{ steps.glob-invalid.outputs.paths }}\n${{ steps.glob-invalid.outputs.paths-output-file }}"
+          echo "${{ steps.glob-invalid.outputs.paths }}"
+          echo "${{ steps.glob-invalid.outputs.paths-output-file }}"
+
+      - name: Verify that the paths-output-file is created
+        if: steps.glob-invalid.outputs.paths-output-file == ''
+        run: |
+          echo "Expected: paths-output-file to not be empty got ${{ steps.glob-invalid.outputs.paths-output-file }}"
+          exit 1

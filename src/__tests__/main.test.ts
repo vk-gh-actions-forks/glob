@@ -12,21 +12,24 @@ const defaultEnv = {
   'INPUT_FOLLOW-SYMBOLIC-LINKS': 'true',
   'INPUT_MATCH-DIRECTORIES': 'true',
   'INPUT_MATCH-GITIGNORE-FILES': 'true',
-  'INPUT_ESCAPE-PATHS': 'false',
+  'INPUT_SAFE-OUTPUT': 'false',
   'INPUT_HEAD-REPO-FORK': 'false',
   INPUT_SEPARATOR: ' ',
   'INPUT_STRIP-TOP-LEVEL-DIR': 'true',
   'INPUT_WORKING-DIRECTORY': '.',
   'INPUT_INCLUDE-DELETED-FILES': 'false',
+  'INPUT_READ-GITIGNORE': 'true',
   INPUT_FILES: '',
   'INPUT_FILES-FROM-SOURCE-FILE': ''
 }
 
-function mockedEnv(testEnvVars: {[key: string]: string}): void {
-  for (const key in testEnvVars) {
-    process.env[key] = testEnvVars[key as keyof typeof testEnvVars]
-  }
+function mockedEnv(testEnvVars: Record<string, string>): void {
+  jest.replaceProperty(process, 'env', {...process.env, ...testEnvVars})
 }
+
+afterEach(() => {
+  jest.restoreAllMocks()
+})
 
 test('returns the paths of the filtered files (input files, input source files)', async () => {
   mockedEnv({
@@ -37,16 +40,98 @@ test('returns the paths of the filtered files (input files, input source files)'
   })
 
   const EXPECTED_FILENAMES = [
-    '.github/workflows/greetings.yml',
     'CODE_OF_CONDUCT.md',
     'CONTRIBUTING.md',
     'HISTORY.md',
     'README.md',
     'src/__tests__/cleanup.test.ts',
-    'src/__tests__/getDeletedFiles.test.ts',
     'src/__tests__/getFilesFromSourceFile.test.ts',
     'src/__tests__/main.test.ts',
     'src/__tests__/util.test.ts'
+  ]
+    .map(fName => normalizeSeparators(fName))
+    .join(process.env.INPUT_SEPARATOR)
+
+  // @ts-ignore
+  core.setOutput = jest.fn()
+
+  await run()
+
+  expect(core.setOutput).toHaveBeenNthCalledWith(2, 'paths', EXPECTED_FILENAMES)
+})
+
+test('returns the paths of the filtered files as escaped paths (input files, input source files)', async () => {
+  mockedEnv({
+    ...defaultEnv,
+    INPUT_FILES: 'src/__tests__/**.test.ts\n*.sh',
+    'INPUT_FILES-FROM-SOURCE-FILE':
+      'src/__tests__/source-files.txt\nsrc/__tests__/source-files.txt',
+    'INPUT_ESCAPE-PATHS': 'true'
+  })
+
+  const EXPECTED_FILENAMES = [
+    'CODE_OF_CONDUCT.md',
+    'CONTRIBUTING.md',
+    'HISTORY.md',
+    'README.md',
+    'src/__tests__/cleanup.test.ts',
+    'src/__tests__/getFilesFromSourceFile.test.ts',
+    'src/__tests__/main.test.ts',
+    'src/__tests__/util.test.ts'
+  ]
+    .map(fName => normalizeSeparators(fName))
+    .join(process.env.INPUT_SEPARATOR)
+
+  // @ts-ignore
+  core.setOutput = jest.fn()
+
+  await run()
+
+  expect(core.setOutput).toHaveBeenNthCalledWith(2, 'paths', EXPECTED_FILENAMES)
+})
+
+test('returns other paths except excluded files (input files, input excluded files)', async () => {
+  mockedEnv({
+    ...defaultEnv,
+    INPUT_FILES: 'src',
+    'INPUT_EXCLUDED-FILES': 'src/__tests__/main.test.ts'
+  })
+
+  const EXPECTED_FILENAMES = [
+    'src',
+    'src/__tests__',
+    'src/__tests__/cleanup.test.ts',
+    'src/__tests__/excluded-files.txt',
+    'src/__tests__/getFilesFromSourceFile.test.ts',
+    'src/__tests__/source-files.txt',
+    'src/__tests__/test.txt',
+    'src/__tests__/util.test.ts',
+    'src/cleanup.ts',
+    'src/main.ts',
+    'src/utils.ts'
+  ]
+    .map(fName => normalizeSeparators(fName))
+    .join(process.env.INPUT_SEPARATOR)
+
+  // @ts-ignore
+  core.setOutput = jest.fn()
+
+  await run()
+
+  expect(core.setOutput).toHaveBeenNthCalledWith(2, 'paths', EXPECTED_FILENAMES)
+})
+
+test('returns other paths except excluded files (input source files, input excluded files from source files)', async () => {
+  mockedEnv({
+    ...defaultEnv,
+    'INPUT_FILES-FROM-SOURCE-FILE': 'src/__tests__/source-files.txt',
+    'INPUT_EXCLUDED-FILES-FROM-SOURCE-FILE': 'src/__tests__/excluded-files.txt'
+  })
+
+  const EXPECTED_FILENAMES = [
+    'CODE_OF_CONDUCT.md',
+    'CONTRIBUTING.md',
+    'README.md'
   ]
     .map(fName => normalizeSeparators(fName))
     .join(process.env.INPUT_SEPARATOR)
@@ -69,10 +154,11 @@ test('returns the paths of the filtered files (input files, input source files) 
     'src',
     'src/__tests__',
     'src/__tests__/cleanup.test.ts',
-    'src/__tests__/getDeletedFiles.test.ts',
+    'src/__tests__/excluded-files.txt',
     'src/__tests__/getFilesFromSourceFile.test.ts',
     'src/__tests__/main.test.ts',
     'src/__tests__/source-files.txt',
+    'src/__tests__/test.txt',
     'src/__tests__/util.test.ts',
     'src/cleanup.ts',
     'src/main.ts',
@@ -98,10 +184,11 @@ test('returns the paths of the filtered files (input files, input source files) 
 
   const EXPECTED_FILENAMES = [
     'src/__tests__/cleanup.test.ts',
-    'src/__tests__/getDeletedFiles.test.ts',
+    'src/__tests__/excluded-files.txt',
     'src/__tests__/getFilesFromSourceFile.test.ts',
     'src/__tests__/main.test.ts',
     'src/__tests__/source-files.txt',
+    'src/__tests__/test.txt',
     'src/__tests__/util.test.ts',
     'src/cleanup.ts',
     'src/main.ts',
@@ -127,9 +214,9 @@ test('returns the paths of the all other files (input files)', async () => {
   const EXPECTED_FILENAMES = [
     'LICENSE',
     'action.yml',
+    'eslint.config.mjs',
     'jest.config.js',
     'package.json',
-    'renovate.json',
     'src',
     'src/cleanup.ts',
     'src/utils.ts',
@@ -159,10 +246,11 @@ test('returns the paths of the filtered files (input files)', async () => {
 
   const EXPECTED_FILENAMES = [
     'src/__tests__/cleanup.test.ts',
-    'src/__tests__/getDeletedFiles.test.ts',
+    'src/__tests__/excluded-files.txt',
     'src/__tests__/getFilesFromSourceFile.test.ts',
     'src/__tests__/main.test.ts',
     'src/__tests__/source-files.txt',
+    'src/__tests__/test.txt',
     'src/__tests__/util.test.ts',
     'entrypoint.sh'
   ]
@@ -185,7 +273,6 @@ test('returns the paths of the filtered files (input source files)', async () =>
   })
 
   const EXPECTED_FILENAMES = [
-    '.github/workflows/greetings.yml',
     'CODE_OF_CONDUCT.md',
     'CONTRIBUTING.md',
     'HISTORY.md',
@@ -225,7 +312,6 @@ test('returns the paths of the filtered files in the paths-output-file', async (
   })
 
   const EXPECTED_FILENAMES = [
-    '.github/workflows/greetings.yml',
     'CODE_OF_CONDUCT.md',
     'CONTRIBUTING.md',
     'HISTORY.md',
@@ -285,7 +371,6 @@ test('excludes default excluded files', async () => {
   })
 
   const EXPECTED_FILENAMES = [
-    '.github/workflows/greetings.yml',
     'CODE_OF_CONDUCT.md',
     'CONTRIBUTING.md',
     'HISTORY.md',
@@ -310,13 +395,30 @@ test('includes patterns provided in the files input that are excluded in the .gi
   })
 
   const EXPECTED_FILENAMES = [
-    '.github/workflows/greetings.yml',
     'CODE_OF_CONDUCT.md',
     'CONTRIBUTING.md',
     'HISTORY.md',
     'README.md',
     'coverage/clover.xml'
   ]
+    .map(fName => normalizeSeparators(fName))
+    .join(process.env.INPUT_SEPARATOR)
+
+  // @ts-ignore
+  core.setOutput = jest.fn()
+
+  await run()
+
+  expect(core.setOutput).toHaveBeenNthCalledWith(2, 'paths', EXPECTED_FILENAMES)
+})
+
+test('includes patterns provided in the files input that are included in the .gitignore file', async () => {
+  mockedEnv({
+    ...defaultEnv,
+    INPUT_FILES: 'src/__tests__/test.txt'
+  })
+
+  const EXPECTED_FILENAMES = ['src/__tests__/test.txt']
     .map(fName => normalizeSeparators(fName))
     .join(process.env.INPUT_SEPARATOR)
 
@@ -337,7 +439,6 @@ test('excludes patterns provided in the files input that are excluded in the .gi
   })
 
   const EXPECTED_FILENAMES = [
-    '.github/workflows/greetings.yml',
     'CODE_OF_CONDUCT.md',
     'CONTRIBUTING.md',
     'HISTORY.md',
@@ -362,10 +463,11 @@ test('matched file patterns with braces are expanded', async () => {
 
   const EXPECTED_FILENAMES = [
     'src/__tests__/cleanup.test.ts',
-    'src/__tests__/getDeletedFiles.test.ts',
+    'src/__tests__/excluded-files.txt',
     'src/__tests__/getFilesFromSourceFile.test.ts',
     'src/__tests__/main.test.ts',
     'src/__tests__/source-files.txt',
+    'src/__tests__/test.txt',
     'src/__tests__/util.test.ts'
   ]
     .map(fName => normalizeSeparators(fName))
@@ -379,12 +481,25 @@ test('matched file patterns with braces are expanded', async () => {
   expect(core.setOutput).toHaveBeenNthCalledWith(2, 'paths', EXPECTED_FILENAMES)
 })
 
-test('error raised when files are not found', async () => {
+test('Warning is reported when files are not found', async () => {
   mockedEnv({
     ...defaultEnv,
     INPUT_FILES: 'src/__tests__/not-found.txt'
   })
 
-  const expectedError = new Error('No paths found using the specified patterns')
-  await expect(run()).rejects.toThrow(expectedError)
+  // @ts-ignore
+  core.warning = jest.fn()
+
+  // @ts-ignore
+  core.setOutput = jest.fn()
+
+  await run()
+
+  expect(core.warning).toHaveBeenCalledWith(
+    'No paths found using the specified patterns'
+  )
+
+  expect(core.setOutput).toHaveBeenNthCalledWith(2, 'paths', '')
+
+  expect(core.setOutput).toHaveBeenNthCalledWith(3, 'has-custom-patterns', true)
 })

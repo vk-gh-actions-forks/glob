@@ -8,11 +8,11 @@ jobs:
   update-version:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           fetch-depth: 0
       - name: Run release-tagger
-        uses: tj-actions/release-tagger@v2
+        uses: tj-actions/release-tagger@v4
       - name: Sync release version.
         uses: tj-actions/sync-release-version@v13
         id: sync-release-version
@@ -21,12 +21,25 @@ jobs:
           only_major: true
           paths: |
             README.md
-      - name: Generate CHANGELOG
-        uses: tj-actions/github-changelog-generator@v1.17
+      - name: Run git-cliff
+        uses: tj-actions/git-cliff@v1
+      - name: Run semver-diff
+        id: semver-diff
+        uses: tj-actions/semver-diff@v3
+      - uses: actions/setup-node@v4
         with:
-          output: 'HISTORY.md'
+          node-version: '20.x'
+          registry-url: https://npm.pkg.github.com/
+      - run: yarn install
+      - name: Setup committer
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+      - run: yarn publish --${{ steps.semver-diff.outputs.release_type }} --no-git-tag-version
+        env:
+          NODE_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v4.2.3
+        uses: peter-evans/create-pull-request@v7.0.8
         with:
           base: "main"
           labels: "merge when passing"

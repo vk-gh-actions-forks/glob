@@ -1,11 +1,12 @@
 import * as core from '@actions/core'
 import * as glob from '@actions/glob'
-import {GlobOptions} from '@actions/glob'
-import {existsSync, promises as fs} from 'fs'
+import {type GlobOptions} from '@actions/glob'
+import {promises as fs} from 'fs'
 import * as path from 'path'
 
 import {
   escapeString,
+  exists,
   getDeletedFiles,
   getFilesFromSourceFile,
   normalizeSeparators,
@@ -45,7 +46,6 @@ export async function run(): Promise<void> {
     'excluded-files-from-source-file-separator',
     {required: false, trimWhitespace: false}
   )
-
   const followSymbolicLinks = core.getBooleanInput('follow-symbolic-links', {
     required: false
   })
@@ -55,12 +55,13 @@ export async function run(): Promise<void> {
   const matchGitignoreFiles = core.getBooleanInput('match-gitignore-files', {
     required: true
   })
+  const readGitignore = core.getBooleanInput('read-gitignore', {required: true})
   const separator = core.getInput('separator', {
     required: true,
     trimWhitespace: false
   })
   const diff = core.getInput('diff', {required: false})
-  const escapePaths = core.getBooleanInput('escape-paths', {required: false})
+  const safeOutput = core.getBooleanInput('safe-output', {required: false})
   const stripTopLevelDir = core.getBooleanInput('strip-top-level-dir', {
     required: true
   })
@@ -74,7 +75,7 @@ export async function run(): Promise<void> {
   const baseSha = core.getInput('base-sha', {required: includeDeletedFiles})
 
   const workingDirectory = path.resolve(
-    process.env.GITHUB_WORKSPACE || process.cwd(),
+    process.env.GITHUB_WORKSPACE ?? process.cwd(),
     core.getInput('working-directory', {required: true})
   )
 
@@ -82,7 +83,8 @@ export async function run(): Promise<void> {
 
   let filePatterns = files
     .split(filesSeparator)
-    .filter(p => p !== '')
+    .filter(Boolean)
+    .map(p => (p.endsWith(path.sep) ? `${p}**` : p))
     .join('\n')
 
   core.debug(`file patterns: ${filePatterns}`)
@@ -96,10 +98,11 @@ export async function run(): Promise<void> {
   if (excludedFiles !== '') {
     const excludedFilePatterns = excludedFiles
       .split(excludedFilesSeparator)
-      .filter(p => p !== '')
+      .filter(Boolean)
       .map(p => {
-        if (!p.startsWith('!')) {
-          p = `!${p}`
+        p = p.startsWith('!') ? p : `!${p}`
+        if (p.endsWith(path.sep)) {
+          p = `${p}**`
         }
         return p
       })
@@ -153,7 +156,7 @@ export async function run(): Promise<void> {
     }
   }
 
-  filePatterns += `\n${DEFAULT_EXCLUDED_FILES.filter(p => !!p).join('\n')}`
+  filePatterns += `\n${DEFAULT_EXCLUDED_FILES.join('\n')}`
 
   filePatterns = [...new Set(filePatterns.split('\n').filter(p => p !== ''))]
     .map(pt => {
@@ -191,77 +194,86 @@ export async function run(): Promise<void> {
   }
 
   const globber = await glob.create(filePatterns, globOptions)
-  // @ts-ignore
+  // @ts-expect-error
   globber.patterns.map(pattern => {
     pattern.minimatch.options.nobrace = false
     pattern.minimatch.make()
     return pattern
   })
-  let paths = await globber.glob()
+  let paths = new Set(await globber.glob())
 
-  if (existsSync(gitignorePath)) {
+  if (readGitignore && (await exists(gitignorePath))) {
     const gitignoreFilePatterns = (
       await getFilesFromSourceFile({
         filePaths: [gitignorePath]
       })
     )
+      .concat(DEFAULT_EXCLUDED_FILES)
       .filter(p => !!p)
       .map(pt => {
-        const parts = pt.split(path.sep)
+        const negated = pt.startsWith('!')
+        const parts = pt.replace(/^!/, '').split(path.sep)
 
         const absolutePath = path.resolve(path.join(workingDirectory, parts[0]))
 
-        return path.join(absolutePath, ...parts.slice(1))
+        return `${negated ? '!' : ''}${path.join(
+          absolutePath,
+          ...parts.slice(1)
+        )}`
       })
       .join('\n')
+
+    core.debug(`gitignore file patterns: ${gitignoreFilePatterns}`)
 
     const gitIgnoreGlobber = await glob.create(
       gitignoreFilePatterns,
       globOptions
     )
 
-    const gitignoreMatchingFiles = await gitIgnoreGlobber.glob()
+    const gitignoreMatchingFiles = new Set(await gitIgnoreGlobber.glob())
 
     if (allInclusive || !matchGitignoreFiles) {
-      paths = paths.filter(p => !gitignoreMatchingFiles.includes(p))
+      paths = new Set([...paths].filter(p => !gitignoreMatchingFiles.has(p)))
     } else if (matchGitignoreFiles) {
-      paths = paths.filter(
-        p =>
-          ![
-            ...gitignoreMatchingFiles.filter(
-              pt => !paths.filter(pf => !pf.startsWith('!')).includes(pt)
-            )
-          ].includes(p)
+      const excludedPaths = new Set(
+        [...gitignoreMatchingFiles].filter(gp => !paths.has(gp))
       )
+      paths = new Set([...paths].filter(p => !excludedPaths.has(p)))
     }
   }
 
   if (includeDeletedFiles) {
-    paths = paths.concat(
-      await getDeletedFiles({
+    paths = new Set<string>([
+      ...paths,
+      ...(await getDeletedFiles({
         filePatterns,
         baseSha,
         sha,
         cwd: workingDirectory,
         diff: diffType
-      })
-    )
+      }))
+    ])
   }
 
   if (stripTopLevelDir) {
-    paths = paths
-      .map((p: string) =>
-        normalizeSeparators(p.replace(workingDirectory + path.sep, ''))
-      )
-      .map((p: string) => normalizeSeparators(p.replace(workingDirectory, '')))
-      .filter((p: string) => p !== '')
+    paths = new Set(
+      [...paths]
+        .map((p: string) =>
+          normalizeSeparators(
+            p
+              .replace(workingDirectory + path.sep, '')
+              .replace(workingDirectory, '')
+          )
+        )
+        .filter((p: string) => !!p)
+    )
   }
 
-  if (escapePaths) {
-    paths = paths.map((p: string) => escapeString(p))
+  if (safeOutput) {
+    paths = new Set([...paths].map(p => escapeString(p)))
   }
 
-  const pathsOutput = paths.join(separator)
+  const pathsOutput = [...paths].join(separator)
 
   const hasCustomPatterns =
     files !== '' ||
@@ -269,24 +281,22 @@ export async function run(): Promise<void> {
     excludedFiles !== '' ||
     excludedFilesFromSourceFile !== ''
 
-  if (pathsOutput) {
-    const pathsOutputFile = await tempfile('.txt')
-    await fs.writeFile(pathsOutputFile, pathsOutput, {flag: 'w'})
-
-    core.setOutput('paths-output-file', pathsOutputFile)
-    core.saveState('paths-output-file', pathsOutputFile)
-    core.info(`Successfully created paths-output-file: ${pathsOutputFile}`)
-  } else if (hasCustomPatterns) {
-    throw new Error('No paths found using the specified patterns')
+  if (!pathsOutput && hasCustomPatterns) {
+    core.warning('No paths found using the specified patterns')
   }
+  const pathsOutputFile = await tempfile('.txt')
+  await fs.writeFile(pathsOutputFile, pathsOutput, {flag: 'w'})
+  core.setOutput('paths-output-file', pathsOutputFile)
+  core.saveState('paths-output-file', pathsOutputFile)
+  core.info(`Successfully created paths-output-file: ${pathsOutputFile}`)
 
   core.setOutput('paths', pathsOutput)
   core.setOutput('has-custom-patterns', hasCustomPatterns)
 }
 
+/* istanbul ignore if */
 if (!process.env.TESTING) {
-  // eslint-disable-next-line github/no-then
-  run().catch(e => {
-    core.setFailed(e.message || e)
+  run().catch((e: Error) => {
+    core.setFailed(e.message ?? e)
   })
 }

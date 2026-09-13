@@ -10,9 +10,9 @@ export async function run(): Promise<void> {
   }
 }
 
+/* istanbul ignore if */
 if (!process.env.TESTING) {
-  // eslint-disable-next-line github/no-then
-  run().catch(e => {
-    core.setFailed(e.message || e)
+  run().catch((e: Error) => {
+    core.setFailed(e.message ?? e)
   })
 }

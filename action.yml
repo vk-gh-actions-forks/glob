@@ -38,21 +38,25 @@ inputs:
     default: "true"
     required: true
   match-directories:
-    description: 'Indicates whether to include match directories'
+    description: 'Indicates whether to include matched directories'
     default: "true"
     required: true
   match-gitignore-files:
     description: 'Indicates whether to match files in `.gitignore`'
     default: "false"
     required: true
+  read-gitignore:
+    description: 'Indicates whether to read `.gitignore`. The `.gitignore` file will be ignored if set to `false`. Overrides `match-gitignore-files`'
+    default: "true"
+    required: true
   separator:
     description: 'Separator used for the paths output.'
     required: true
     default: " "
-  escape-paths:
+  safe-output:
     description: 'Escape special characters of filenames used in the `paths` output'
     required: false
-    default: "false"
+    default: "true"
   strip-top-level-dir:
     description: 'Strip the `$GITHUB_WORKSPACE` from the `paths` output'
     required: false
@@ -77,7 +81,7 @@ inputs:
     description: 'Specify a base commit SHA used for comparing changes, when `include-deleted-files` is set to `true`'
     required: false
   working-directory:
-    description: 'Specify a relative path under $GITHUB_WORKSPACE to locate the repository'
+    description: 'Provide a path that is relative to `$GITHUB_WORKSPACE` for identifying the repository.'
     required: true
     default: '.'
   diff:
@@ -90,10 +94,10 @@ outputs:
   paths-output-file:
     description: "List of filtered paths using the specified patterns and separator stored in a temporary file"
   has-custom-patterns:
-    description: "Indicates whether custom patterns were used"
+    description: "Indicates whether at least one pattern was provided"
 
 runs:
-  using: 'node16'
+  using: 'node20'
   main: 'dist/index.js'
   post: 'dist/cleanup/index.js'
 

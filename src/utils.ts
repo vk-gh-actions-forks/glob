@@ -1,4 +1,4 @@
-/*global AsyncIterableIterator*/
+/* global AsyncIterableIterator */
 import {createReadStream, promises as fs} from 'fs'
 import {tmpdir} from 'os'
 import path from 'path'
@@ -9,12 +9,11 @@ import * as patternHelper from '@actions/glob/lib/internal-pattern-helper'
 import {Pattern} from '@actions/glob/lib/internal-pattern'
 import {v4 as uuidv4} from 'uuid'
 
-export const IS_WINDOWS: boolean = process.platform === 'win32'
-
 /**
  * Converts windows path `\` to `/`
  */
 export function normalizeSeparators(filePath: string): string {
+  const IS_WINDOWS: boolean = process.platform === 'win32'
   filePath = filePath || ''
 
   // Windows
@@ -48,6 +47,7 @@ export async function deletedGitFiles({
     cwd
   })
 
+  /* istanbul ignore if */
   if (topDirStderr || topDirExitCode !== 0) {
     throw new Error(topDirStderr || 'An unexpected error occurred')
   }
@@ -62,8 +62,14 @@ export async function deletedGitFiles({
     {cwd}
   )
 
-  if (stderr || exitCode !== 0) {
+  core.debug(`git diff exited with: ${exitCode}`)
+
+  /* istanbul ignore if */
+  if (exitCode !== 0) {
     throw new Error(stderr || 'An unexpected error occurred')
+  } else if (stderr) {
+    /* istanbul ignore next */
+    core.warning(stderr)
   }
 
   const deletedFiles = stdout
@@ -72,12 +78,13 @@ export async function deletedGitFiles({
     .filter(p => p !== '')
     .map(p => path.join(topLevelDir, p))
 
-  core.debug(`deleted files: ${deletedFiles}`)
+  core.debug(`deleted files: ${deletedFiles.join('\n')}`)
 
   return deletedFiles
 }
 
-async function getPatterns(filePatterns: string): Promise<Pattern[]> {
+export async function getPatterns(filePatterns: string): Promise<Pattern[]> {
+  const IS_WINDOWS: boolean = process.platform === 'win32'
   const patterns = []
 
   if (IS_WINDOWS) {
@@ -92,9 +99,9 @@ async function getPatterns(filePatterns: string): Promise<Pattern[]> {
     if (!(!line || line.startsWith('#'))) {
       line = IS_WINDOWS ? line.replace(/\\/g, '/') : line
       const pattern = new Pattern(line)
-      // @ts-ignore
+      // @ts-expect-error
       pattern.minimatch.options.nobrace = false
-      // @ts-ignore
+      // @ts-expect-error
       pattern.minimatch.make()
       patterns.push(pattern)
 
@@ -150,6 +157,7 @@ async function* lineOfFileGenerator({
   excludedFiles: boolean
 }): AsyncIterableIterator<string> {
   const fileStream = createReadStream(filePath)
+  /* istanbul ignore next */
   fileStream.on('error', error => {
     throw error
   })
@@ -157,15 +165,16 @@ async function* lineOfFileGenerator({
     input: fileStream,
     crlfDelay: Infinity
   })
-  for await (const line of rl) {
+  for await (let line of rl) {
     if (!line.startsWith('#') && line !== '') {
       if (excludedFiles) {
-        if (line.startsWith('!')) {
-          yield line
-        } else {
-          yield `!${line}`
+        line = line.startsWith('!') ? line : `!${line}`
+        if (line.endsWith(path.sep)) {
+          line = `${line}**`
         }
+        yield line
       } else {
+        line = line.endsWith(path.sep) ? `${line}**` : line
         yield line
       }
     }
@@ -193,6 +202,22 @@ export async function tempfile(extension = ''): Promise<string> {
   return path.join(tempDirectory, `${uuidv4()}${extension}`)
 }
 
+/**
+ * Escapes special characters in a string for the bash shell.
+ *
+ * @param value - The string to be escaped.
+ * @returns The escaped string.
+ */
 export function escapeString(value: string): string {
-  return value.replace(/[|\\{}()[\]^$+*?.]/g, '\\$&')
+  // escape special characters for bash shell
+  return value.replace(/[^\x20-\x7E]|[:*?<>|;`$()&!]|\[|]/g, '\\$&')
+}
+
+export async function exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath)
+    return true
+  } catch {
+    return false
+  }
 }
