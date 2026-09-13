@@ -22,7 +22,7 @@ jobs:
           paths: |
             README.md
       - name: Run git-cliff
-        uses: tj-actions/git-cliff@v1
+        uses: tj-actions/git-cliff@v2
       - name: Run semver-diff
         id: semver-diff
         uses: tj-actions/semver-diff@v3
